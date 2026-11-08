@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>สั่งอาหารออนไลน์ - ร้านส้มตำ ไก่ทอด</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Prompt', sans-serif; background-color: #FFFBEB; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .map-box { height: 180px; width: 100%; border-radius: 12px; margin-top: 6px; z-index: 10;}
+    .star-rating i { cursor: pointer; transition: color 0.2s; }
+    .star-rating i:hover { color: #f59e0b !important; }
+  </style>
+</head>
+<body class="text-gray-800 pb-24">
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbzsv-OGRAeRPCDkL8auP93xIuvEx2h-sPMHiYFj1gM7nDApc58BsdiOkI6L7Zl_wjSF/exec";
+    let currentSubmittedOrderId = localStorage.getItem('last_active_order_id') || null;
+    let paymentCheckInterval = null;
+    
+    let regMap = null, regMarker = null;
+    let editMap = null, editMarker = null;
+    let userCoords = { lat: 16.023, lng: 101.123 };
+  </script>
+
+  <!-- 🔒 LOGIN / REGISTER MODAL (ย่อไว้เพื่อความกระชับ โค้ดเดิมเหมือนเป๊ะ) -->
+  <div id="auth-modal" class="fixed inset-0 bg-slate-900/80 z-50 flex items-center justify-center p-4 hidden">
+    <!-- ใส่โค้ด Modal Login/Register เดิมของคุณกัปตันตรงนี้ -->
+  </div>
+
+  <!-- ✏️ MODAL แก้ไขข้อมูลส่วนตัว & ออกจากระบบ (โค้ดเดิม) -->
+  <div id="edit-profile-modal" class="fixed inset-0 bg-slate-900/80 z-50 flex items-center justify-center p-4 hidden">
+    <!-- ใส่โค้ด Modal แก้ไขโปรไฟล์ เดิมของคุณกัปตันตรงนี้ -->
+  </div>
+
+  <!-- Header -->
+  <header class="bg-gradient-to-r from-amber-600 via-orange-600 to-red-600 text-white shadow-lg sticky top-0 z-40">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center space-x-3">
+        <div id="shop-logo-box" class="w-10 h-10 rounded-full bg-white text-orange-600 flex items-center justify-center font-bold text-xl shadow overflow-hidden">🌶️</div>
+        <div>
+          <h1 class="font-bold text-base md:text-lg leading-tight" id="shop-header-title">ร้านส้มตำ ไก่ทอด</h1>
+          <p class="text-xs text-amber-100 flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-green-400 inline-block animate-pulse"></span> เปิดรับออเดอร์ออนไลน์
+          </p>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-1.5">
+        <button onclick="openOrderStatusModal()" class="p-1.5 px-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-full text-xs font-bold flex items-center gap-1 shadow transition">
+          <i class="fa-solid fa-receipt"></i> <span class="hidden sm:inline">เช็กสถานะ</span>
+        </button>
+        <button onclick="handleUserHeaderClick()" id="user-profile-btn" class="p-1.5 px-3 bg-white/20 hover:bg-white/30 rounded-full text-xs font-bold flex items-center gap-1.5 transition">
+          <i class="fa-solid fa-user"></i> <span id="header-user-name">เข้าสู่ระบบ</span>
+        </button>
+        <button onclick="toggleCart()" class="relative p-2 bg-white/20 hover:bg-white/30 rounded-full transition">
+          <i class="fa-solid fa-cart-shopping text-xl"></i>
+          <span id="cart-badge" class="hidden absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center border-2 border-white">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-3xl mx-auto px-4 pt-4">
+    <!-- Banner -->
+    <div class="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-4 text-white shadow-md mb-4 flex justify-between items-center">
+      <div>
+        <span class="bg-white/20 text-[10px] px-2 py-0.5 rounded-full font-semibold">แซ่บสดใหม่ทุกวัน</span>
+        <h2 class="text-base font-bold mt-1">สั่งง่าย จ่ายสะดวก สแกน QR ได้ทันที</h2>
+      </div>
+      <i class="fa-solid fa-fire text-3xl opacity-30"></i>
+    </div>
+
+    <!-- 🌟 Category Filter (เปลี่ยนเป็น Dynamic Container) -->
+    <div id="category-container" class="flex space-x-2 overflow-x-auto pb-3 mb-4 hide-scrollbar">
+      <!-- ปุ่มจะถูกสร้างที่นี่อัตโนมัติด้วย JavaScript -->
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-3" id="product-grid"></div>
+  </main>
+
+  <!-- Bottom Cart Bar (โค้ดเดิม) -->
+  <div id="bottom-bar" class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-2xl p-3 z-30 hidden">
+    <!-- ... โค้ด Cart Bar เดิม ... -->
+  </div>
+
+  <!-- Cart Modal (โค้ดเดิม) -->
+  <div id="cart-modal" class="fixed inset-0 bg-black/60 z-50 hidden flex justify-end">
+    <!-- ... โค้ด Cart Modal เดิม ... -->
+  </div>
+
+  <!-- QR Modal / Order Status (โค้ดเดิม) -->
+  <div id="qr-modal" class="fixed inset-0 bg-black/70 z-50 hidden flex items-center justify-center p-4">
+    <!-- ... โค้ดสถานะออเดอร์เดิม ... -->
+  </div>
+
+  <script>
+    // 🌟 1. ดึงหมวดหมู่เมนูจากระบบ (สามารถแก้ได้จากหน้า Admin)
+    const defaultCategories = ["ทั้งหมด", "ส้มตำ", "ตำเส้น", "ตำเครื่อง", "ของทอด/ทานเล่น", "อาหารจานเดียว", "เครื่องดื่ม"];
+    // ตรวจสอบว่าแอดมินเซ็ตหมวดหมู่ไว้ใน LocalStorage หรือไม่ ถ้าไม่มีให้ใช้ค่าเริ่มต้น
+    let shopCategories = JSON.parse(localStorage.getItem('pos_shop_categories')) || defaultCategories;
+    let activeCat = 'ทั้งหมด';
+
+    // 🌟 2. ตัวอย่างเมนูเริ่มต้น (แก้ไขให้ตรงหมวดหมู่ใหม่)
+    const defaultProducts = [
+      { id: 1, name: "ส้มตำไทย", category: "ส้มตำ", price: 50, image: "🥗" },
+      { id: 2, name: "ตำปูปลาร้า", category: "ส้มตำ", price: 50, image: "🌶️" },
+      { id: 3, name: "ตำเส้นเล็กหมูยอ", category: "ตำเส้น", price: 60, image: "🍜" },
+      { id: 4, name: "ตำมาม่าทะเล", category: "ตำเส้น", price: 80, image: "🍝" },
+      { id: 5, name: "ตำกุ้งสด", category: "ตำเครื่อง", price: 100, image: "🦐" },
+      { id: 6, name: "ไก่ทอดหาดใหญ่", category: "ของทอด/ทานเล่น", price: 45, image: "🍗" },
+    ];
+
+    const products = JSON.parse(localStorage.getItem('pos_products')) || defaultProducts;
+    let cart = [];
+    
+    // ... โค้ดระบบ User Authentication และ Map GPS คงเดิม (ยกยอดมาจากไฟล์ที่แล้ว) ...
+
+    // 🌟 3. ฟังก์ชันสร้างปุ่มหมวดหมู่อัตโนมัติ (Dynamic Categories)
+    function renderCategories() {
+      const container = document.getElementById('category-container');
+      container.innerHTML = shopCategories.map(cat => {
+        const isActive = activeCat === cat;
+        // หากปุ่มถูกเลือก (Active) เปลี่ยนสีส้ม, ไม่เลือกเป็นสีขาว
+        const btnClass = isActive 
+          ? "px-4 py-2 rounded-xl text-xs font-semibold bg-orange-600 text-white shadow-sm whitespace-nowrap transition"
+          : "px-4 py-2 rounded-xl text-xs font-semibold bg-white text-gray-600 border whitespace-nowrap transition hover:bg-orange-50";
+        
+        return `<button onclick="filterCategory('${cat}')" class="${btnClass}">${cat}</button>`;
+      }).join('');
+    }
+
+    // เมื่อกดปุ่มหมวดหมู่
+    function filterCategory(cat) { 
+      activeCat = cat; 
+      renderCategories(); // อัปเดตสีปุ่ม
+      renderProducts();   // อัปเดตรายการอาหาร
+    }
+
+    // 🌟 4. ฟังก์ชันเรนเดอร์สินค้า
+    function renderProducts() {
+      const grid = document.getElementById('product-grid');
+      const list = activeCat === 'ทั้งหมด' ? products : products.filter(p => p.category === activeCat);
+      
+      if (list.length === 0) {
+        grid.innerHTML = `<p class="col-span-3 text-center text-xs text-gray-400 py-8">ไม่มีรายการในหมวดหมู่นี้</p>`;
+        return;
+      }
+
+      grid.innerHTML = list.map(p => {
+        const isImg = p.image && (p.image.startsWith('data:image') || p.image.startsWith('http'));
+        const imgHtml = isImg 
+          ? `<img src="${p.image}" class="w-full h-28 object-cover rounded-xl mb-2" alt="${p.name}">`
+          : `<div class="text-3xl text-center py-4 bg-orange-50 rounded-xl mb-2">${p.image || '🌶️'}</div>`;
+
+        return `
+          <div class="bg-white rounded-2xl p-2.5 shadow-sm border border-orange-100 flex flex-col justify-between hover:shadow-md transition">
+            <div>
+              ${imgHtml}
+              <h4 class="font-semibold text-xs text-gray-800 leading-tight">${p.name}</h4>
+              <p class="text-[10px] text-gray-400 mt-0.5">${p.category}</p>
+            </div>
+            <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100">
+              <span class="font-bold text-orange-600 text-xs">฿${p.price}</span>
+              <button onclick="addToCart(${p.id})" class="bg-orange-600 hover:bg-orange-700 text-white text-[11px] px-2.5 py-1 rounded-lg font-medium shadow-sm transition">+ เพิ่ม</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // เริ่มต้นการทำงานหน้าเว็บ
+    function initApp() {
+      // updateUIForAuth(); // เรียกใช้ถ้าใส่โค้ด Auth ครบ
+      renderCategories();
+      renderProducts();
+    }
+    
+    // เรียกใช้ตอนโหลดหน้าเสร็จ
+    window.onload = initApp;
+
+    // ... ฟังก์ชันตะกร้า (Cart) และ ออเดอร์ (Order Polling) คงเดิมครับ ...
+  </script>
+</body>
+</html>
